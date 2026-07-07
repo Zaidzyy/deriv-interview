@@ -12,7 +12,7 @@
   "top_k_error_examples": 10,
   "class_imbalance_ratio_warn": 3.0,
   "cross_validation": {
-    "enabled": false,
+    "enabled": true,
     "folds": 5
   }
 }
