@@ -1,5 +1,23 @@
-﻿.env
+.env
 __pycache__/
+.pytest_cache/
 *.pyc
-ARTIFACTS/
 PLAYBOOK.md
+test_llm.py
+
+# Generated pipeline artifacts (by exact name — NEVER wildcard *.json,
+# config.json / train.csv / test.csv must stay committed for a clean checkout).
+data_validation_report.json
+preprocessing_preview.json
+split_report.json
+metrics.json
+model_selection_report.json
+error_analysis.json
+safeguards_report.json
+run_manifest.json
+cross_validation_report.json
+model_meta.json
+test_predictions.csv
+
+# Saved models / vectorizers
+*.joblib
