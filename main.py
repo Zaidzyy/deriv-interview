@@ -20,7 +20,13 @@ from pipeline.error_analysis import top_misclassified
 from pipeline.evaluate import METRIC_KEYS, evaluate_model
 from pipeline.features import build_vectorizer
 from pipeline.logging_utils import Logger
-from pipeline.models import build_models, scores_for
+from pipeline.models import (
+    SUPPORTED,
+    build_model,
+    build_models,
+    partition_models,
+    scores_for,
+)
 from pipeline.preprocessing import preprocess_text
 from pipeline.safeguards import Safeguards
 from pipeline.select import select_winner
@@ -78,7 +84,19 @@ def run() -> dict:
     # ---- FEATURES_FIT ---------------------------------------------------
     with machine.stage(Stage.FEATURES_FIT):
         vectorizer = build_vectorizer(cfg)
-        X_train = vectorizer.fit_transform(train_split["processed"])
+        try:
+            X_train = vectorizer.fit_transform(train_split["processed"])
+        except ValueError as exc:
+            # Guard: a config/data swap (e.g. high min_df on tiny data) can yield
+            # an empty vocabulary. Fail with a clear, specific message.
+            vc = cfg.get("vectorizer", {})
+            raise SystemExit(
+                "error: TF-IDF produced an empty vocabulary on "
+                f"{len(train_split)} training rows "
+                f"(min_df={vc.get('min_df')}, ngram_range={vc.get('ngram_range')}, "
+                f"max_features={vc.get('max_features')}). "
+                f"Lower min_df or provide more/longer text. [{exc}]"
+            ) from exc
         X_val = vectorizer.transform(val_split["processed"])
         y_train = train_split["label"].tolist()
         y_val = val_split["label"].tolist()
@@ -86,7 +104,20 @@ def run() -> dict:
 
     # ---- MODELS_TRAINED -------------------------------------------------
     with machine.stage(Stage.MODELS_TRAINED):
-        models = build_models(cfg)
+        # Guard: config may list a subset or an unsupported name after a swap.
+        # Train exactly the supported models named; warn+skip unknowns; still
+        # require >= 3 trained total, else fail with a clear error.
+        requested = cfg.get("models", list(SUPPORTED))
+        supported, unknown = partition_models(requested)
+        for u in unknown:
+            logger.warn(f"config lists unsupported model '{u}' -- skipping "
+                        f"(supported: {list(SUPPORTED)})")
+        if len(supported) < 3:
+            raise ValueError(
+                f"Need >= 3 supported models to train, but config yielded "
+                f"{len(supported)} ({supported}). Supported models: {list(SUPPORTED)}."
+            )
+        models = {name: build_model(name, seed) for name in supported}
         for name, model in models.items():
             model.fit(X_train, y_train)
             logger.ok(f"trained {name}")

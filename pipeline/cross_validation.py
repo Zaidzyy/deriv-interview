@@ -10,7 +10,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 
 from .features import build_vectorizer
-from .models import build_model
+from .models import SUPPORTED, build_model
 
 # scikit-learn scorer names for our macro metrics.
 _SCORER = {
@@ -36,6 +36,8 @@ def run_cross_validation(cfg: dict, X_text, y) -> dict:
     skf = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
     results = {}
     for name in cfg.get("models", []):
+        if name not in SUPPORTED:  # skip unsupported names (already warned in training)
+            continue
         pipe = Pipeline([
             ("tfidf", build_vectorizer(cfg)),
             ("clf", build_model(name, seed)),

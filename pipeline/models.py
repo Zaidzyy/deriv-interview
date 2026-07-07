@@ -30,6 +30,18 @@ def build_models(cfg: dict) -> dict:
     return {name: build_model(name, seed) for name in names}
 
 
+def partition_models(names) -> tuple[list, list]:
+    """Split requested model names into (supported, unknown), preserving order.
+
+    Defensive helper for fixture/config swaps: lets the caller warn-and-skip
+    unknown model names instead of crashing on them.
+    """
+    supported, unknown = [], []
+    for n in names:
+        (supported if n in SUPPORTED else unknown).append(n)
+    return supported, unknown
+
+
 def scores_for(model, X):
     """Return (predicted_labels, score_array_or_None, score_kind).
 
