@@ -33,23 +33,45 @@ INIT → DATA_LOADED → DATA_VALIDATED → TEXT_PREPROCESSED → SPLIT_CREATED 
 
 ## Design decisions
 
-- **Deterministic & reproducible.** All randomness is seeded from `config.random_seed`; reruns
-  produce byte-identical `metrics.json`. All numeric work (metrics, selection) is plain Python /
-  scikit-learn.
-- **Shared preprocessing (no train/serve skew).** `pipeline/preprocessing.preprocess_text` is the
-  single lowercase→trim→collapse-whitespace function imported by **both** training and
-  `predict.py`. `validate.py` asserts inference reproduces it exactly.
-- **Winner selection reads the saved artifact.** `pipeline/select.py` loads `metrics.json` from
-  disk (not in-memory results) and applies a fixed rule: highest `selection_metric`, tie-break on
-  macro precision, then alphabetical model name. The full decision is written to
-  `model_selection_report.json`.
-- **Stratification guard.** On small fixtures where a class has too few samples to stratify, the
-  split falls back to a non-stratified split and emits a safeguard warning instead of crashing.
-- **Training vs inference separated.** `main.py` + `pipeline/` train; `predict.py` only loads
-  saved artifacts and infers.
-- **Score semantics.** `logistic_regression` / `naive_bayes` report `predict_proba`; `linear_svm`
-  (LinearSVC) has no calibrated probability, so its `confidence_or_score` is the decision-function
-  margin (labelled via `score_kind`).
+- **Enforced 12-stage state machine.** `pipeline/stages.py` holds the ordered stages; the machine
+  starts at `INIT` and `advance()` **raises `StageError`** on any skip or reorder. Training
+  therefore *cannot* run before the data is loaded, validated, and split — every run follows the
+  same auditable path, logged stage-by-stage with ✓/✗ and timings.
+- **Deterministic, no LLM.** Pure scikit-learn on CPU — no external APIs, no model calls. All
+  numeric work (metrics, selection, counts) is exact Python, so results are repeatable rather than
+  sampled.
+- **Reproducibility from a single seed.** Every random step (split, models) is seeded from
+  `config.random_seed`. Verified two ways: reruns produce **byte-identical `metrics.json`**, and a
+  **clean-room run** (delete all artifacts → `python main.py`) regenerates everything from only
+  `train.csv` / `test.csv` / `config.json` — nothing is precomputed.
+- **No train/serve skew.** A single `preprocess_text()` (lowercase → trim → collapse whitespace)
+  in `pipeline/preprocessing.py` is imported by **both** training and `predict.py`, so inference
+  cleans text identically to training. `validate.py` asserts the two paths agree.
+- **Model comparison & selection.** Three baselines (logistic regression, linear SVM,
+  multinomial NB) are trained on the same split and scored on accuracy + macro precision/recall/F1
+  with a confusion matrix. The winner is chosen by **macro-F1** — deliberately over accuracy,
+  since classes may be imbalanced and accuracy would flatter a majority-class predictor. Selection
+  is done **in code** by reading the saved `metrics.json` and applying explicit tie-breaks: higher
+  macro precision, then alphabetical model name. The choice is thus reproducible from the artifact
+  alone, and the full rationale is written to `model_selection_report.json`.
+- **Safeguards against misleading evaluation** (`safeguards_report.json`): warns on high class
+  imbalance, on any class missing from the validation split, and on exact duplicate texts shared
+  between train and validation. A **stratification guard** detects singleton/tiny classes and
+  falls back to a non-stratified split (with a warning) instead of crashing.
+- **Fixture-swap robustness.** Because the evaluator may replace the CSVs/config: unknown or
+  subset `models` entries are warned-and-skipped (still requiring ≥3 trained, else a clear error);
+  an empty-vocabulary vectorizer config (e.g. `min_df` too high for the data) fails with a
+  specific, actionable message rather than a raw traceback; and multiclass (>2 label) data flows
+  through end-to-end.
+- **Separation of concerns.** Training (`main.py` + `pipeline/`) is fully separate from inference
+  (`predict.py`), which only loads the saved vectorizer + winning model. Score semantics differ by
+  model: `logistic_regression` / `naive_bayes` report `predict_proba`; `linear_svm` (LinearSVC)
+  has no calibrated probability, so its `confidence_or_score` is the decision-function margin,
+  labelled via `score_kind`.
+
+**How to run:** `python main.py` trains, evaluates, selects, and writes all artifacts;
+`python validate.py` checks them (exit 0 = pass); `python predict.py --text "..."` serves a single
+prediction. Artifacts are listed under [Artifacts produced](#artifacts-produced).
 
 ## Module layout
 
