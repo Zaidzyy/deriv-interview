@@ -27,7 +27,12 @@ Take messy `{INPUT}`, run it through a **strict multi-stage pipeline**, and prod
 - **Stage machine**: list of stages + `advance(expected, next)` that **raises** on any
   out-of-order transition. Log stage start/complete with timings.
 - **Deterministic vs LLM split**: parse/structure with plain code; use the LLM **only for
-  judgment** (extraction, drafting). Keep deterministic work out of the LLM for reliability + cost.
+  judgment** (classification, extraction, drafting). Keep deterministic work out of the LLM for
+  reliability + cost. **All numeric computation, counting, and scoring is Python — never the LLM.**
+  Deterministic stages must be reproducible: seed any randomness; same input → same output.
+- **Mock LLM mode**: a `MOCK_LLM` flag makes LLM stages return canned **typed** output so the whole
+  pipeline runs end-to-end with no live API. Protects the demo if the key/network fails, and lets
+  `validate.py` run offline. Do not silently fall back to mock — switch only on the explicit flag.
 - **Typed output**: every LLM response is parsed into a **Pydantic model**. Invalid output
   **fails loud**, never silently continues.
 - **Grounding / anti-hallucination** (the headline feature):
