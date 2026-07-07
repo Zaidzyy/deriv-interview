@@ -8,6 +8,12 @@
 Take messy `{INPUT}`, run it through a **strict multi-stage pipeline**, and produce
 **validated, source-grounded, structured output**. Correctness and traceability over features.
 
+## Constraints (timed ~60-min build)
+- Favor a **working end-to-end skeleton over completeness**. Stub extra stages and label them `# TODO`.
+- A stage may run on small sample data as long as the whole pipeline executes end-to-end.
+- Language: **Python**. LLM reached through **one provider, key from `.env`** — never hardcoded.
+- Propose a scoped plan that fits the time budget before writing code; don't over-build.
+
 ## Build order (do in this order; each layer must work before the next)
 1. Runs end-to-end on sample input and prints clean per-stage output. **Non-negotiable.**
 2. Stage state machine that **cannot skip or reorder** stages.
